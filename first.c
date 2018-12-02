@@ -71,9 +71,9 @@ void simulate(FILE* fp, int type, int blockSize, int assoc, int set){
 	//printf("4\n");
 	while(fscanf(fp, "%*x: %c 0x%llx", &action, &address) > 0){
 			//as it reads thru the file it takes the tag and index and stores them
-			index = (address>>offset)%(1<<(int)(log2(set)));
+			index = (address>>offset)%(0x1<<(int)(log2(set)));
 			tag = address>>(offset+index);
-			printf(" set: %d offset: %lf index: %llx tag: %llx \n",set, log2(blockSize) ,index, tag);
+			//printf(" set: %d offset: %lf index: %llx tag: %llx \n",set, log2(blockSize) ,index, tag);
 			//then accesses cache based off of index and search for tagid (so make helper to find tagid)
 			temp = matchTag(index, tag);
 			currBucket = table[index];
@@ -93,32 +93,25 @@ void simulate(FILE* fp, int type, int blockSize, int assoc, int set){
 					memReads++;
 					//memReads++;
 				}
-				//need to deal with this 
 				if(countLL(currBucket)==assoc){
-					struct cacheBlock* t = findFirst(currBucket);
-					addNode(&currBucket, t, tempBlock,-1);
+					addNode(&currBucket, tempBlock,-1);
 				}
-				else
-					addNode(&currBucket, NULL, tempBlock, 0);
+				else if (countLL(currBucket) < assoc)
+					addNode(&currBucket, tempBlock, 1);
+				else if (countLL(currBucket) == 0){
+					addNode(&currBucket, tempBlock, 0);
+				}
 				counter++;
 			}
 			//is a hit
 			else{
-				//increment hit counter
-				//struct cacheBlock* t = findFirst(currBucket);
+
 				hit++;
 				if (action == 'W'){
 					memWrites++;
-				//	printf("memReads++\n");
+
 				}
-/*					addNode(&currBucket, t, tempBlock, -1);
-					//printf("5\n");
-					counter++;
-				}
-				else{
-					addNode(&currBucket, t, tempBlock, 1);
-					counter++;
-				}*/
+
 			}
 	}
 	printf("no-prefetch\n");
@@ -168,13 +161,24 @@ int cacheType(char* name){
 	return 1;
 
 }
-void addNode(struct cacheBlock** head, struct cacheBlock* old, struct cacheBlock* new, int mode){
-	struct cacheBlock* temp = (*head);
-	if(temp->next == NULL){
-		(*head) = new;
-		return;
+void addNode(struct cacheBlock** head, struct cacheBlock* new, int mode){
+	if(*(head) == NULL)
+		*head = new;
+	struct cacheBlock* temp = *(head);
+	struct cacheBlock* thead = *(head);
+	new->next = *(head);
+	*(head) = new;
+	if(mode == 1){
+		while(temp->next!=NULL){
+			thead = temp;
+			temp = temp->next;
+		}
+		thead->next = NULL;
+		free(temp);
 	}
-	if(mode == 0){
+}
+
+	/*if(mode == 0){
 		(*head) = new;
 		return;
 	}
@@ -186,19 +190,20 @@ void addNode(struct cacheBlock** head, struct cacheBlock* old, struct cacheBlock
 		return;
 	}
 	//when mode = -1
+	if(old == NULL){
+		printf("error\n");
+		return;
+	}
 	while(temp->next != old){
 		temp = temp->next;
 	}
-	if(old == NULL){
-		printf("bitch wut");
-	}
-	else if(old->next != NULL){
+	if(old->next != NULL){
 		new -> next = old->next->next;
 	}else
 		new->next = old;
 
-	temp ->next = new;
-}
+	temp ->next = new;*/
+
 
 struct cacheBlock* findFirst(struct cacheBlock* head){
 	if(head->next == NULL)
