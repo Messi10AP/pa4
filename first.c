@@ -83,40 +83,42 @@ void simulate(FILE* fp, int type, int blockSize, int assoc, int set){
 			tempBlock->address = address;
 			tempBlock->tag = tag;
 			//is miss
-			if(temp ==NULL){
+			if(temp == NULL){
 				//increment miss counter
 				miss++;
 				if(action == 'R')
 					memReads++;
 				if (action == 'W'){
 					memWrites++;
+					memReads++;
 					//memReads++;
 				}
-				addNode(&currBucket, NULL, tempBlock, 0);
+				//need to deal with this 
+				if(countLL(currBucket)==assoc){
+					struct cacheBlock* t = findFirst(currBucket);
+					addNode(&currBucket, t, tempBlock,-1);
+				}
+				else
+					addNode(&currBucket, NULL, tempBlock, 0);
 				counter++;
 			}
 			//is a hit
 			else{
 				//increment hit counter
-				struct cacheBlock* t = findFirst(currBucket);
+				//struct cacheBlock* t = findFirst(currBucket);
 				hit++;
-				//if(action == 'R'){
-					//memReads++;
-					//printf("memReads++\n" );
-			//	}
-				 if (action == 'W'){
+				if (action == 'W'){
 					memWrites++;
 				//	printf("memReads++\n");
 				}
-				if(countLL(currBucket) == assoc){
-					addNode(&currBucket, t, tempBlock, -1);
+/*					addNode(&currBucket, t, tempBlock, -1);
 					//printf("5\n");
 					counter++;
 				}
 				else{
 					addNode(&currBucket, t, tempBlock, 1);
 					counter++;
-				}
+				}*/
 			}
 	}
 	printf("no-prefetch\n");
