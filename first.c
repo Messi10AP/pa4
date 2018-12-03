@@ -4,7 +4,6 @@
 #include<ctype.h>
 #include<math.h>
 #include"first.h"
-// inlcude -lm in makefile
 
 //int counter=0;
 int memReads = 0;
@@ -79,9 +78,6 @@ void simulate(FILE* fp, int type, int blockSize, int assoc, int set){
 			tag = getTag(address, blockOffset, indexOffset);
 			//then accesses cache based off of index and search for tagid (so make helper to find tagid)
 			temp = matchTag(index, tag, blockOffset+indexOffset);
-			int vals = sizeof(table[index][0])/sizeof(unsigned long long int);
-			//is miss
-			//printf("determining\n");
 			if(temp == -1){
 				//increment miss counter
 				miss++;
@@ -92,15 +88,7 @@ void simulate(FILE* fp, int type, int blockSize, int assoc, int set){
 					memReads++;
 					//memReads++;
 				}
-				//printf("addin\n");
-				if(vals==assoc){
-					addNode(index, address);
-				}
-				else if (vals < assoc)
-					addNode(index, address);
-				else if (vals == 0){
-					addNode(index, address);
-				}
+				addNode(index, address);
 			}
 			//is a hit
 			else{
@@ -168,7 +156,7 @@ unsigned long long int getBlockOffset(int blockSize){
 }
 
 unsigned long long int getIndex(unsigned long long int blockOffset, unsigned long long int indexOffset, unsigned long long int address){
-        return (address>>blockOffset)%(1<<indexOffset);
+  return (address>>blockOffset)%(0x1<<indexOffset);
 }
 
 unsigned long long int getTag(unsigned long long int address, unsigned long long int index, unsigned long long int offset) {
