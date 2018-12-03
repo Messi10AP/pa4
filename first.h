@@ -4,8 +4,11 @@
 
 void simulate(FILE*, int, int ,int,int);
 void buildTable(int, int);
-struct cacheBlock* matchTag(int, unsigned long long int);
+int matchTag(unsigned long long int,unsigned long long int, unsigned long long int);
 int cacheType(char*);
-void addNode(struct cacheBlock**, struct cacheBlock*, int);
-struct cacheBlock* findFirst(struct cacheBlock*);
-int countLL(struct cacheBlock*);
+void addNode(unsigned long long int,unsigned long long int);
+unsigned long long int getIndexOffset(int);
+unsigned long long int getBlockOffset(int);
+unsigned long long int getIndex(unsigned long long int , unsigned long long int, unsigned long long int);
+unsigned long long int getTag(unsigned long long int, unsigned long long int, unsigned long long int);
+void shiftVals(unsigned long long int);
