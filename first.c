@@ -1,221 +1,211 @@
-#include<stdio.h>
-#include<stdlib.h>
-#include<string.h>
-#include<ctype.h>
-#include<math.h>
-#include"first.h"
+#include "first.h"
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
 
-//int counter=0;
-int memReads = 0;
-int memWrites = 0;
-int hit = 0;
-int miss = 0;
-int prefetchReads = 0;
-int prefetchMisses = 0;
-int prefetchHits = 0;
-int prefetchMiss = 0;
-void popZero(int, int);
+int prefetch_run = 0;
 
-
-typedef struct cacheBlock{
-	int time;
-	unsigned long long int address;
-	unsigned long long int tag;
-	struct cacheBlock* next;
-}cacheBlock;
-
-unsigned long long int** table;
-
-int main(int argc, char** argv){
-	int sets;
-	int cacheSize = atoi(argv[1]);
-	char* associativity = argv[2];
-	//char* type = argv[3];
-	int assoc;
-	int blockSize = atoi(argv[4]);
-	FILE* fp = fopen(argv[5], "r");
-	int type = cacheType(argv[2]);
-	printf("cachetype: %d\n", type);
-	//printf("0\n");
-	if(type>1){
-	//	printf("1\n");
-		associativity = strchr(associativity,':');
-		char tchar = associativity[1];
-		associativity = strchr(associativity,tchar);
-		assoc = atoi(associativity);
-		sets = cacheSize/(blockSize*assoc);
-	} else if(type == 0){
-		//printf("2\n");
-		assoc = cacheSize/blockSize;
-		sets = 1;
+cache_entry_t *init_cache() {
+	int i;
+	cache_entry_t *cs;
+	cs = malloc(sizeof(cache_entry_t) * num_indexes);
+	i = 0;
+	for (; i < num_indexes; i++) {
+		cs[i].valid = 0;
+		cs[i]._tag = -1;
+		cs[i].set = i / assoc;
+		cs[i].recent = 0;
+		cs[i].dirty = 0;
 	}
-	else{
-		//printf("3\n");
-		sets = cacheSize/blockSize;
+	return cs;
+}
+
+void block_set_sizes() {
+	int i = 1;
+	bk_bits = 0;
+
+	for (; i < bk_size; i *= 2) {
+		bk_bits++;
+	}
+	if (i != bk_size && bk_bits != 0) {
+		printf("Invalid block size..\n");
+		exit(1);
+	}
+	i = 1;
+	set_bits = 0;
+	for (; i < num_indexes / assoc; i *= 2) {
+		set_bits++;
+	}
+	if (i != num_indexes / assoc && set_bits != 0) {
+		printf("Invalid assoc. \n");
+		exit(1);
+	}
+	shift_bits = bk_bits + set_bits;
+}
+
+addr_t getIndex(addr_t addr) {
+	addr_t tag = addr >> (shift_bits);
+	addr_t set = ((addr - (tag << (shift_bits))) >> bk_bits);
+	return set;
+}
+
+addr_t getTag(addr_t addr) {
+	return addr >> (shift_bits);
+}
+
+void update_index(cache_entry_t *cs, int new_ind, int index) {
+	int i = index * assoc;
+	for (; i < index * assoc + assoc; i++) {
+		cs[i].recent++;
+	}
+	cs[new_ind].recent = 0;
+}
+
+void set_cache(cache_entry_t *cs, int index, addr_t tag) {
+	mem_reads++;
+	int i = index;
+	for (; i < index + assoc; i++) {
+		if (cs[i].valid == 0) {
+			cs[i].valid = 1;
+			cs[i]._tag = tag;
+			update_index(cs, i, cs[i].set);
+			return;
+		}
+	}
+
+	i = index;
+	int largest = 0;
+	int large_index = index;
+	for (; i < index + assoc; i++) {
+		if (cs[i].recent > largest) {
+			largest = cs[i].recent;
+			large_index = i;
+		}
+	}
+	cs[large_index]._tag = tag;
+	update_index(cs, large_index, cs[large_index].set);
+
+}
+
+void cache_access(cache_entry_t *cs, addr_t address, int write, int prefetch) {
+	int index = getIndex(address) * assoc;
+	int i = index;
+	addr_t tag = getTag(address);
+
+	//printf("%d,%d,%d,0x%llx,0x%llx,%d,%d\n", write, prefetch, index, tag, address, c_miss, c_hits);
+	if (write) {
+		mem_writes++;
+	}
+
+	for (; i < index + assoc; i++) {
+		if (cs[i]._tag == tag) {
+			if (cs[i].valid == 1) {
+			    c_hits++;
+				if (write) {
+					cs[i]._tag = tag;
+				}
+				update_index(cs, i, cs[i].set);
+				return;
+			}
+		}
+	}
+	if (!prefetch_run || (prefetch_run && prefetch)) {
+		  c_miss++;
+	}
+	set_cache(cs, index, tag);
+	if (prefetch) {
+		addr_t next_addr = (address + (1 << bk_bits));
+		cache_access(cs, next_addr, 0, 0);
+	}
+}
+
+int parse_args(int argc, char *argv[]) {
+	c_size = atoi(argv[1]);
+	bk_size = atoi(argv[3]);
+	assoc = 0;
+	if (strcmp(argv[2], "direct") == 0) {
 		assoc = 1;
+	} else if (strcmp(argv[2], "assoc") == 0) {
+		assoc = c_size / bk_size;
+	} else {
+		char* temp = argv[2];
+		const char *c = strtok(temp, ":");
+
+		c = strtok(NULL, ":");
+		if (c == NULL) {
+			printf("Invalid associativity \n");
+			return 1;
+		}
+		assoc = atoi(c);
 	}
-	//printf("building w assoc: %d\n", assoc);
-	buildTable(sets, assoc);
-	//printf("simulating\n");
-	simulate(fp, type, blockSize, assoc, sets);
 	return 0;
 }
 
-
-void simulate(FILE* fp, int type, int blockSize, int assoc, int set){
-	unsigned long long int address;
-	char action;
-	unsigned long long int tag;
-	//int tempTag;
-	int temp;
-	unsigned long long int index;
-	int blockOffset = getBlockOffset(blockSize);
-	int indexOffset = getIndexOffset(set);
-	//printf("4\n");
-	while(fscanf(fp, "%*x: %c 0x%llx", &action, &address) > 0){
-			//as it reads thru the file it takes the tag and index and stores them
-			index = getIndex(blockOffset, indexOffset, address);
-			tag = getTag(address, blockOffset, indexOffset);
-			//then accesses cache based off of index and search for tagid (so make helper to find tagid)
-			temp = matchTag(index, tag, blockOffset+indexOffset);
-			if(temp == -1){
-				//increment miss counter
-				miss++;
-				if(action == 'R')
-					memReads++;
-				if (action == 'W'){
-					memWrites++;
-					memReads++;
-					//memReads++;
-				}
-				addNode(index, address);
-			}
-			//is a hit
-			else{
-				hit++;
-				if (action == 'W'){
-					memWrites++;
-				}
-			}
+void print_stat(int prefetch) {
+	if (prefetch) {
+		printf("with-prefetch\n");
+	} else {
+		printf("no-prefetch\n");
 	}
-	printf("no-prefetch\n");
-	printf("Memory reads: %d\n", memReads);
-	printf("Memory writes: %d\n", memWrites);
-	printf("Cache hits: %d\n", hit);
-	printf("Cache misses: %d\n", miss);
+	printf("Memory reads: %d\n", mem_reads);
+	printf("Memory writes: %d\n", mem_writes);
+	printf("Cache hits: %d\n", c_hits);
+	printf("Cache misses: %d\n", c_miss);
+	printf("\n");
 }
 
-void buildTable(int sets, int assoc){
-	table = (unsigned long long int**) malloc(sets*sizeof(unsigned long long int*));
-	int i;
-	for(i = 0; i < sets; i++){
-		table[i] = (unsigned long long int*) malloc(assoc * sizeof(unsigned long long int));
-	}
-	//printf("4\n");
-}
+int main(int argc, char * argv[]) {
+	char ip[20];
+	char wr[2];
+	char addstr[20];
 
-int matchTag( unsigned long long int bucket, unsigned long long int tag, unsigned long long int offset){
-	unsigned long long int* temp = table[bucket];
-	int i;
-	//printf("size: %lx\n",sizeof(temp)/sizeof(unsigned long long int) );
-	for(i = 0; i< sizeof(temp)/sizeof(unsigned long long int); i+=1){
-		if(getTag(table[bucket][i], bucket,offset ) == tag){
-			printf("return 1\n");
+	if (argc != 6) {
+		printf(
+				"USAGE: fast <cache_size> <associativity> <cache_policy=fifo> <block_size> <trace file> \n");
+		return 1;
+	}
+	int p = parse_args(argc, argv);
+	if (p != 0) {
+		return p;
+	return 0;
+	}
+
+	num_indexes = c_size / bk_size;
+	if (num_indexes / assoc * assoc * bk_size != c_size || c_size == 0) {
+		fprintf(stderr, "Invalid size\n");
+		return 1;
+	}
+	int k;
+	for (k = 0; k < 2; k++) {
+		mem_reads = 0;
+		mem_writes = 0;
+		c_hits = 0;
+		c_miss = 0;
+		FILE *trace = fopen(argv[5], "r");
+		if (trace == NULL) {
+			fprintf(stderr, "Cannot open file.\n");
 			return 1;
 		}
-	}
-	return -1;
-}
+		cache_entry_t *cs = init_cache();
+		block_set_sizes();
+		addr_t address;
+		int prefetch = k==0;
+		prefetch_run = prefetch;
+		//printf("write,prefetch,index,tag,address,c_miss,c_hits\n");
 
-int cacheType(char* name){
-	int temp;
-	char* t = strchr(name,':');
-	if(t!=NULL){
-		t = strchr(t, t[1]);
-		//is of type assoc:#
-		temp = atoi(t);
-		if(temp%2==0)
-			return temp;
-		else
-			return -1;
-	}
-	else if (strcmp(name, "assoc")==0){
-		//is of type assoc so 1 set
-		return 0;
-	}
-	//is of type direct map
-	return 1;
-}
-
-unsigned long long int getIndexOffset(int set){
-	return log(set)/log(2);
-}
-
-unsigned long long int getBlockOffset(int blockSize){
-	return log(blockSize)/log(2);
-}
-
-unsigned long long int getIndex(unsigned long long int blockOffset, unsigned long long int indexOffset, unsigned long long int address){
-  return (address>>blockOffset)%(0x1<<indexOffset);
-}
-
-unsigned long long int getTag(unsigned long long int address, unsigned long long int index, unsigned long long int offset) {
-	return address>>(offset+index);
-}
-
-void addNode(unsigned long long int index, unsigned long long int address){
-	shiftVals(index);
-	table[index][0] = address;
-}
-
-void shiftVals(unsigned long long int index){
-	unsigned long long int* temp = table[index];
-	if(sizeof(temp)/sizeof(unsigned long long int) == 1)
-		return;
-	int i;
-	for( i = sizeof(table[index])/sizeof(unsigned long long int)-1; i>-1; i++){
-			temp[i+1] = temp[i];
-	}
-}
-
-void popZero(int assoc, int set){
-	int i, j;
-	printf("assoc: %d , set: %d \n", assoc, set);
-	printf("v: %lx, h: %lx\n",sizeof(table)/sizeof(unsigned long long int*), sizeof(table[0])/sizeof(unsigned long long int) );
-	for(i = 0; i < set; i+=1){
-		for(j=0; j < assoc; j+=1){
-			printf("i: %d, j: %d", i ,j);
-			table[i][j] = 0;
+		while (fscanf(trace, "%s %s %s", ip, wr, addstr) != EOF) {
+			if (strcmp(ip, "#eof") == 0) {
+				break;
+			}
+			if (sscanf(addstr, "0x%llx", &address) == 0) {
+				continue;
+			}
+			int write = strcmp(wr, "W") == 0;
+			cache_access(cs, address, write, prefetch);
 		}
+		print_stat(prefetch);
+		fclose(trace);
+		free(cs);
 	}
+	return 0;
 }
-	/*if(mode == 0){
-		(*head) = new;
-		return;
-	}
-	else if(mode == 1){
-		while(temp->next != NULL){
-			temp = temp->next;
-		}
-		temp->next = new;
-		return;
-	}
-	//when mode = -1
-	if(old == NULL){
-		printf("error\n");
-		return;
-	}
-	while(temp->next != old){
-		temp = temp->next;
-	}
-	if(old->next != NULL){
-		new -> next = old->next->next;
-	}else
-		new->next = old;
-
-	temp ->next = new;*/
-
-//define hash table global hit and miss counters and mem reads
-//buckets are defined by input so to find # of buckets = C/A*B
-//define load var function use fscanf("%llu")
-//

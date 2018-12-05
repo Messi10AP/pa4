@@ -1,0 +1,12 @@
+Shyam Patel
+spp128
+PA4
+
+Data Structures used:
+	- I used a global 2d array of unsigned long long ints to store the addresses I write into the cache
+	- Each row in the 2d array is set up like a queue were the first node that was put in gets put into the rightmost element of the row and it fills it up towards element 0 (which is the most recent write)
+		- When the number of addresses in the row is equal to the associativity, I shift all elements 1 index to the right from element 0 to length-2. I accomplish this by using a for loop that starts at length - 2 and goes backwards through the row as assigns the current value to the value of 1 index to the right
+		-If it's a direct mapped cache, I simply replace the value of element 0
+
+Prefetching:
+	-Unfortunately, I was not able to get prefetching to work but theoretically prefetiching should increase the number of memory reads, decrease the number of misses and keep the number of memory writes the same because if you access memory at a specific address, you are also very lkely to access memory at a nearby address. Thereby, this change is a result of exploiting spacial locality.
